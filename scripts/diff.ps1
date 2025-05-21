@@ -1,0 +1,1 @@
+"Give me the commit message for these changes, give it to me using conventional commits, body's lines must not be longer than 100 characters:`n`n$(git diff --no-color --staged | Out-String)" | Set-Clipboard
