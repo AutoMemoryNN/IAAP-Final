@@ -273,36 +273,172 @@ class DataManager:
 
         plt.show()
 
+    def get_dataset_stats(
+        self, show_plots: bool = True, save_path: Optional[str] = None
+    ):
+        """
+        Analiza y muestra estadísticas del dataset
+        
+        Args:
+            show_plots: Si mostrar gráficos de estadísticas
+            save_path: Ruta base para guardar gráficos (opcional)
+            
+        Returns:
+            Diccionario con estadísticas del dataset
+        """
+        total_images = len(self.image_files)
+        total_objects = 0
+        class_counts = {cls: 0 for cls in self.classes}
+        images_with_objects = 0
+        objects_per_image = []
+        centers_x = []
+        centers_y = []
+
+        for image_file in self.image_files:
+            label_file = self.labels_dir / f"{image_file.stem}.txt"
+            labels = self._load_labels(label_file)
+
+            if labels:
+                images_with_objects += 1
+                total_objects += len(labels)
+                objects_per_image.append(len(labels))
+
+                for class_id, x_center, y_center, width, height in labels:
+                    if class_id < len(self.classes):
+                        class_counts[self.classes[class_id]] += 1
+
+                    centers_x.append(x_center)
+                    centers_y.append(y_center)
+            else:
+                objects_per_image.append(0)
+
+        avg_objects = (
+            total_objects / images_with_objects if images_with_objects > 0 else 0
+        )
+        print("=== ESTADÍSTICAS DEL DATASET ===")
+        print(f"Total de imágenes: {total_images}")
+        print(f"Imágenes con objetos: {images_with_objects}")
+        print(f"Total de objetos: {total_objects}")
+        print(f"Promedio de objetos por imagen: {avg_objects:.2f}")
+
+        if not show_plots:
+            return {
+                "total_images": total_images,
+                "images_with_objects": images_with_objects,
+                "total_objects": total_objects,
+                "avg_objects_per_image": avg_objects,
+                "class_counts": class_counts,
+                "objects_per_image_dist": objects_per_image,
+                "centers_x": centers_x,
+                "centers_y": centers_y,
+            }
+
+        fig = plt.figure(figsize=(18, 10))
+
+        # 1. Distribución de clases (barras)
+        ax1 = plt.subplot(1, 3, 1)
+        classes_list = list(class_counts.keys())
+        counts_list = list(class_counts.values())
+        colors_rgb = [
+            (c[2] / 255, c[1] / 255, c[0] / 255)
+            for c in self.colors[: len(classes_list)]
+        ]
+
+        bars = ax1.bar(
+            classes_list, counts_list, color=colors_rgb, alpha=0.8, edgecolor="black"
+        )
+        ax1.set_title("Distribución de Clases", fontsize=14, fontweight="bold")
+        ax1.set_xlabel("Clases de Vehículos")
+        ax1.set_ylabel("Número de Instancias")
+        ax1.tick_params(axis="x", rotation=45)
+
+        for bar, count in zip(bars, counts_list):
+            height = bar.get_height()
+            ax1.text(
+                bar.get_x() + bar.get_width() / 2.0,
+                height + max(counts_list) * 0.01,
+                f"{count}",
+                ha="center",
+                va="bottom",
+                fontweight="bold",
+            )
+
+        # 2. Distribución de objetos por imagen (histograma)
+        ax2 = plt.subplot(1, 3, 2)
+        ax2.hist(
+            objects_per_image,
+            bins=max(15, min(50, max(objects_per_image) + 1)),
+            alpha=0.7,
+            color="skyblue",
+            edgecolor="black",
+        )
+        ax2.set_title(
+            "Distribución de Objetos por Imagen", fontsize=14, fontweight="bold"
+        )
+        ax2.set_xlabel("Número de Objetos por Imagen")
+        ax2.set_ylabel("Frecuencia")
+        ax2.axvline(
+            avg_objects,
+            color="red",
+            linestyle="--",
+            linewidth=2,
+            label=f"Promedio: {avg_objects:.1f}",
+        )
+        ax2.legend()
+
+        # 3. Mapa de calor de centros de cajas
+        ax3 = plt.subplot(1, 3, 3)
+        heatmap, xedges, yedges = np.histogram2d(
+            centers_x, centers_y, bins=50, range=[[0, 1], [0, 1]]
+        )
+        extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
+
+        im = ax3.imshow(
+            heatmap.T,
+            extent=extent,
+            origin="lower",
+            cmap="hot",
+            interpolation="nearest",
+            aspect="auto",
+        )
+        ax3.set_title("Mapa de Calor: Centros de Cajas", fontsize=14, fontweight="bold")
+        ax3.set_xlabel("Posición Normalizada X")
+        ax3.set_ylabel("Posición Normalizada Y")
+        fig.colorbar(im, ax=ax3, fraction=0.046, pad=0.04)
+
+        plt.tight_layout()
+
+        if save_path:
+            plt.savefig(f"{save_path}_dataset_stats.png", dpi=300, bbox_inches="tight")
+            print(f"Estadísticas guardadas en: {save_path}_dataset_stats.png")
+        else:
+            plt.savefig("img/dataset_stats.png", dpi=300, bbox_inches="tight")
+            print("Estadísticas guardadas en: img/dataset_stats.png")
+
+        plt.show()
+
+        return {
+            "total_images": total_images,
+            "images_with_objects": images_with_objects,
+            "total_objects": total_objects,
+            "avg_objects_per_image": avg_objects,
+            "class_counts": class_counts,
+            "objects_per_image_dist": objects_per_image,
+            "centers_x": centers_x,
+            "centers_y": centers_y,
+        }
+
 
 # Ejemplo de uso
 if __name__ == "__main__":
     # Crear instancia del DataManager
     dm = DataManager("raw-data")  # Ajusta la ruta según tu estructura
     
-    # Mostrar información básica
-    print(f"Total de imágenes encontradas: {len(dm.image_files)}")
+    # Mostrar estadísticas del dataset
+    print("Calculando estadísticas del dataset...")
+    dm.get_dataset_stats()
     
     # Visualizar muestras aleatorias
-    print("Visualizando muestras aleatorias del dataset...")
+    print("\nVisualizando muestras aleatorias del dataset...")
     dm.visualize_random_samples(num_samples=4, save_path="img/dataset_samples.png")
-    
-    # Ejemplo de carga y visualización de una imagen específica (si existen imágenes)
-    if len(dm.image_files) > 0:
-        img_path = dm.image_files[0]
-        print(f"Cargando imagen de ejemplo: {img_path.name}")
-        img = dm._load_image(img_path)
-        
-        # Cargar etiquetas correspondientes
-        label_path = dm.labels_dir / f"{img_path.stem}.txt"
-        labels = dm._load_labels(label_path)
-        print(f"Etiquetas cargadas: {len(labels)}")
-        
-        # Visualizar imagen con cajas
-        if labels:
-            print("Mostrando imagen con cajas delimitadoras...")
-            dm.show_bbox(img, labels)
-        
-        # Cargar etiquetas correspondientes
-        label_path = dm.labels_dir / f"{img_path.stem}.txt"
-        labels = dm._load_labels(label_path)
         print(f"Etiquetas cargadas: {len(labels)}")
