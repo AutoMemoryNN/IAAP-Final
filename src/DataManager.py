@@ -10,16 +10,16 @@ from typing import List, Tuple, Optional, Union
 class DataManager:
     def __init__(self, data_root: str = "raw-data"):
         """
-        Inicializa el DataManager
+        Initialize the DataManager
 
         Args:
-            data_root: Ruta al directorio que contiene 'images' y 'labels'
+            data_root: Path to directory containing 'images' and 'labels'
         """
         self.data_root = Path(data_root)
         self.images_dir = self.data_root / "images"
         self.labels_dir = self.data_root / "labels"
 
-        # Definir las 8 clases
+        # Define the 8 classes
         self.classes = [
             "auto",
             "bus",
@@ -31,34 +31,30 @@ class DataManager:
             "truck",
         ]
 
-        # Colores para cada clase (BGR format para OpenCV)
+        # Colors for each class (BGR format for OpenCV)
         self.colors = [
-            (0, 255, 0),  # auto - verde
-            (255, 0, 0),  # bus - azul
-            (0, 0, 255),  # car - rojo
-            (255, 255, 0),  # lcv - cian
+            (0, 255, 0),  # auto - green
+            (255, 0, 0),  # bus - blue
+            (0, 0, 255),  # car - red
+            (255, 255, 0),  # lcv - cyan
             (255, 0, 255),  # motorcycle - magenta
-            (0, 255, 255),  # multiaxle - amarillo
-            (128, 0, 128),  # tractor - púrpura
-            (255, 165, 0),  # truck - naranja
+            (0, 255, 255),  # multiaxle - yellow
+            (128, 0, 128),  # tractor - purple
+            (255, 165, 0),  # truck - orange
         ]
 
-        # Verificar que los directorios existen
+        # Verify directories exist
         if not self.images_dir.exists():
-            raise FileNotFoundError(
-                f"Directorio de imágenes no encontrado: {self.images_dir}"
-            )
+            raise FileNotFoundError(f"Images directory not found: {self.images_dir}")
         if not self.labels_dir.exists():
-            raise FileNotFoundError(
-                f"Directorio de etiquetas no encontrado: {self.labels_dir}"
-            )
+            raise FileNotFoundError(f"Labels directory not found: {self.labels_dir}")
 
-        # Obtener lista de archivos de imágenes
+        # Get list of image files
         self.image_files = self._get_image_files()
-        print(f"Encontradas {len(self.image_files)} imágenes en el dataset")
+        print(f"Found {len(self.image_files)} images in the dataset")
 
     def _get_image_files(self) -> List[Path]:
-        """Obtiene lista de archivos de imágenes válidos"""
+        """Get list of valid image files"""
         valid_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif"}
         image_files = []
 
@@ -69,20 +65,20 @@ class DataManager:
         return sorted(image_files)
 
     def _load_image(self, image_path: Path) -> np.ndarray:
-        """Carga una imagen"""
+        """Load an image"""
         img = cv2.imread(str(image_path))
         if img is None:
-            raise ValueError(f"No se pudo cargar la imagen: {image_path}")
+            raise ValueError(f"Could not load image: {image_path}")
         return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
     def _load_labels(
         self, label_path: Path
     ) -> List[Tuple[int, float, float, float, float]]:
         """
-        Carga las etiquetas YOLO desde un archivo
+        Load YOLO labels from a file
 
         Returns:
-            Lista de tuplas (class_id, x_center, y_center, width, height) en formato normalizado
+            List of tuples (class_id, x_center, y_center, width, height) in normalized format
         """
         if not label_path.exists():
             return []
@@ -110,14 +106,14 @@ class DataManager:
         img_height: int,
     ) -> Tuple[int, int, int, int]:
         """
-        Convierte coordenadas YOLO normalizadas a coordenadas de caja delimitadora
+        Convert normalized YOLO coordinates to bounding box coordinates
 
         Args:
-            yolo_coords: (x_center, y_center, width, height) normalizadas
-            img_width, img_height: dimensiones de la imagen
+            yolo_coords: (x_center, y_center, width, height) normalized
+            img_width, img_height: image dimensions
 
         Returns:
-            (x1, y1, x2, y2) coordenadas absolutas
+            (x1, y1, x2, y2) absolute coordinates
         """
         x_center, y_center, width, height = yolo_coords
 
@@ -126,7 +122,6 @@ class DataManager:
         width_abs = width * img_width
         height_abs = height * img_height
 
-        # Calcular esquinas
         x1 = int(x_center_abs - width_abs / 2)
         y1 = int(y_center_abs - height_abs / 2)
         x2 = int(x_center_abs + width_abs / 2)
@@ -143,14 +138,14 @@ class DataManager:
         thickness: int = 2,
     ):
         """
-        Dibuja cajas delimitadoras en una imagen
+        Draw bounding boxes on an image
 
         Args:
-            img: imagen numpy array (RGB)
-            labels: lista de tuplas (class_id, x_center, y_center, width, height)
-            axis: matplotlib axis para mostrar la imagen
-            show_class_names: si mostrar nombres de las clases
-            thickness: grosor de las líneas de las cajas
+            img: numpy array image (RGB)
+            labels: list of tuples (class_id, x_center, y_center, width, height)
+            axis: matplotlib axis to display the image
+            show_class_names: whether to show class names
+            thickness: thickness of bounding box lines
         """
         img_display = img.copy()
         img_height, img_width = img.shape[:2]
@@ -158,12 +153,10 @@ class DataManager:
         for label in labels:
             class_id, x_center, y_center, width, height = label
 
-            # Convertir coordenadas YOLO a bbox
             x1, y1, x2, y2 = self._yolo_to_bbox(
                 (x_center, y_center, width, height), img_width, img_height
             )
 
-            # Obtener color y nombre de clase
             color = self.colors[class_id % len(self.colors)]
             class_name = (
                 self.classes[class_id]
@@ -171,15 +164,11 @@ class DataManager:
                 else f"class_{class_id}"
             )
 
-            # Dibujar rectángulo
             cv2.rectangle(img_display, (x1, y1), (x2, y2), color, thickness)
 
-            # Añadir texto con el nombre de la clase
             if show_class_names:
-                # Calcular posición del texto
                 text_y = y1 - 10 if y1 - 10 > 10 else y1 + 25
 
-                # Dibujar fondo para el texto
                 (text_width, text_height), _ = cv2.getTextSize(
                     class_name, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
                 )
@@ -191,7 +180,6 @@ class DataManager:
                     -1,
                 )
 
-                # Dibujar texto
                 cv2.putText(
                     img_display,
                     class_name,
@@ -220,23 +208,21 @@ class DataManager:
         save_path: Optional[str] = None,
     ):
         """
-        Visualiza muestras aleatorias del dataset
+        Visualize random samples from the dataset
 
         Args:
-            num_samples: número de muestras a visualizar
-            figsize: tamaño de la figura
-            save_path: ruta para guardar la imagen (opcional)
+            num_samples: number of samples to visualize
+            figsize: figure size
+            save_path: path to save the image (optional)
         """
         if len(self.image_files) == 0:
-            print("No hay imágenes en el dataset")
+            print("No images in the dataset")
             return
 
-        # Seleccionar muestras aleatorias
         selected_files = random.sample(
             self.image_files, min(num_samples, len(self.image_files))
         )
 
-        # Configurar la figura
         cols = 2
         rows = (num_samples + cols - 1) // cols
         fig, axes = plt.subplots(rows, cols, figsize=figsize)
@@ -248,19 +234,15 @@ class DataManager:
             axes = axes.flatten()
 
         for i, image_file in enumerate(selected_files):
-            # Cargar imagen
             img = self._load_image(image_file)
 
-            # Cargar etiquetas correspondientes
             label_file = self.labels_dir / f"{image_file.stem}.txt"
             labels = self._load_labels(label_file)
 
-            # Mostrar imagen con cajas
             ax = axes[i] if isinstance(axes, (list, np.ndarray)) else axes
             self.show_bbox(img, labels, axis=ax)
-            ax.set_title(f"{image_file.name}\n{len(labels)} objetos", fontsize=10)
+            ax.set_title(f"{image_file.name}\n{len(labels)} objects", fontsize=10)
 
-        # Ocultar axes adicionales
         if isinstance(axes, (list, np.ndarray)) and len(selected_files) < len(axes):
             for j in range(len(selected_files), len(axes)):
                 axes[j].axis("off")
@@ -269,7 +251,7 @@ class DataManager:
 
         if save_path:
             plt.savefig(save_path, dpi=150, bbox_inches="tight")
-            print(f"Imagen guardada en: {save_path}")
+            print(f"Image saved at: {save_path}")
 
         plt.show()
 
@@ -277,14 +259,14 @@ class DataManager:
         self, show_plots: bool = True, save_path: Optional[str] = None
     ):
         """
-        Analiza y muestra estadísticas del dataset
-        
+        Analyze and display dataset statistics
+
         Args:
-            show_plots: Si mostrar gráficos de estadísticas
-            save_path: Ruta base para guardar gráficos (opcional)
-            
+            show_plots: Whether to show statistics plots
+            save_path: Base path to save plots (optional)
+
         Returns:
-            Diccionario con estadísticas del dataset
+            Dictionary with dataset statistics
         """
         total_images = len(self.image_files)
         total_objects = 0
@@ -315,11 +297,11 @@ class DataManager:
         avg_objects = (
             total_objects / images_with_objects if images_with_objects > 0 else 0
         )
-        print("=== ESTADÍSTICAS DEL DATASET ===")
-        print(f"Total de imágenes: {total_images}")
-        print(f"Imágenes con objetos: {images_with_objects}")
-        print(f"Total de objetos: {total_objects}")
-        print(f"Promedio de objetos por imagen: {avg_objects:.2f}")
+        print("=== DATASET STATISTICS ===")
+        print(f"Total images: {total_images}")
+        print(f"Images with objects: {images_with_objects}")
+        print(f"Total objects: {total_objects}")
+        print(f"Average objects per image: {avg_objects:.2f}")
 
         if not show_plots:
             return {
@@ -335,7 +317,7 @@ class DataManager:
 
         fig = plt.figure(figsize=(18, 10))
 
-        # 1. Distribución de clases (barras)
+        # 1. Class distribution (bars)
         ax1 = plt.subplot(1, 3, 1)
         classes_list = list(class_counts.keys())
         counts_list = list(class_counts.values())
@@ -347,9 +329,9 @@ class DataManager:
         bars = ax1.bar(
             classes_list, counts_list, color=colors_rgb, alpha=0.8, edgecolor="black"
         )
-        ax1.set_title("Distribución de Clases", fontsize=14, fontweight="bold")
-        ax1.set_xlabel("Clases de Vehículos")
-        ax1.set_ylabel("Número de Instancias")
+        ax1.set_title("Class Distribution", fontsize=14, fontweight="bold")
+        ax1.set_xlabel("Vehicle Classes")
+        ax1.set_ylabel("Number of Instances")
         ax1.tick_params(axis="x", rotation=45)
 
         for bar, count in zip(bars, counts_list):
@@ -363,7 +345,7 @@ class DataManager:
                 fontweight="bold",
             )
 
-        # 2. Distribución de objetos por imagen (histograma)
+        # 2. Objects per image distribution (histogram)
         ax2 = plt.subplot(1, 3, 2)
         ax2.hist(
             objects_per_image,
@@ -372,21 +354,19 @@ class DataManager:
             color="skyblue",
             edgecolor="black",
         )
-        ax2.set_title(
-            "Distribución de Objetos por Imagen", fontsize=14, fontweight="bold"
-        )
-        ax2.set_xlabel("Número de Objetos por Imagen")
-        ax2.set_ylabel("Frecuencia")
+        ax2.set_title("Objects per Image Distribution", fontsize=14, fontweight="bold")
+        ax2.set_xlabel("Number of Objects per Image")
+        ax2.set_ylabel("Frequency")
         ax2.axvline(
             avg_objects,
             color="red",
             linestyle="--",
             linewidth=2,
-            label=f"Promedio: {avg_objects:.1f}",
+            label=f"Average: {avg_objects:.1f}",
         )
         ax2.legend()
 
-        # 3. Mapa de calor de centros de cajas
+        # 3. Heatmap of box centers
         ax3 = plt.subplot(1, 3, 3)
         heatmap, xedges, yedges = np.histogram2d(
             centers_x, centers_y, bins=50, range=[[0, 1], [0, 1]]
@@ -401,19 +381,19 @@ class DataManager:
             interpolation="nearest",
             aspect="auto",
         )
-        ax3.set_title("Mapa de Calor: Centros de Cajas", fontsize=14, fontweight="bold")
-        ax3.set_xlabel("Posición Normalizada X")
-        ax3.set_ylabel("Posición Normalizada Y")
+        ax3.set_title("Heatmap: Box Centers", fontsize=14, fontweight="bold")
+        ax3.set_xlabel("Normalized X Position")
+        ax3.set_ylabel("Normalized Y Position")
         fig.colorbar(im, ax=ax3, fraction=0.046, pad=0.04)
 
         plt.tight_layout()
 
         if save_path:
             plt.savefig(f"{save_path}_dataset_stats.png", dpi=300, bbox_inches="tight")
-            print(f"Estadísticas guardadas en: {save_path}_dataset_stats.png")
+            print(f"Statistics saved at: {save_path}_dataset_stats.png")
         else:
             plt.savefig("img/dataset_stats.png", dpi=300, bbox_inches="tight")
-            print("Estadísticas guardadas en: img/dataset_stats.png")
+            print("Statistics saved at: img/dataset_stats.png")
 
         plt.show()
 
@@ -429,16 +409,7 @@ class DataManager:
         }
 
 
-# Ejemplo de uso
 if __name__ == "__main__":
-    # Crear instancia del DataManager
-    dm = DataManager("raw-data")  # Ajusta la ruta según tu estructura
-    
-    # Mostrar estadísticas del dataset
-    print("Calculando estadísticas del dataset...")
+    dm = DataManager("raw-data")
+    print("Calculating dataset statistics...")
     dm.get_dataset_stats()
-    
-    # Visualizar muestras aleatorias
-    print("\nVisualizando muestras aleatorias del dataset...")
-    dm.visualize_random_samples(num_samples=4, save_path="img/dataset_samples.png")
-        print(f"Etiquetas cargadas: {len(labels)}")
