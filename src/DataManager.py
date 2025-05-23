@@ -121,7 +121,6 @@ class DataManager:
         """
         x_center, y_center, width, height = yolo_coords
 
-        # Convertir a coordenadas absolutas
         x_center_abs = x_center * img_width
         y_center_abs = y_center * img_height
         width_abs = width * img_width
@@ -135,6 +134,85 @@ class DataManager:
 
         return x1, y1, x2, y2
 
+    def show_bbox(
+        self,
+        img: np.ndarray,
+        labels: List[Tuple],
+        axis=None,
+        show_class_names: bool = True,
+        thickness: int = 2,
+    ):
+        """
+        Dibuja cajas delimitadoras en una imagen
+
+        Args:
+            img: imagen numpy array (RGB)
+            labels: lista de tuplas (class_id, x_center, y_center, width, height)
+            axis: matplotlib axis para mostrar la imagen
+            show_class_names: si mostrar nombres de las clases
+            thickness: grosor de las líneas de las cajas
+        """
+        img_display = img.copy()
+        img_height, img_width = img.shape[:2]
+
+        for label in labels:
+            class_id, x_center, y_center, width, height = label
+
+            # Convertir coordenadas YOLO a bbox
+            x1, y1, x2, y2 = self._yolo_to_bbox(
+                (x_center, y_center, width, height), img_width, img_height
+            )
+
+            # Obtener color y nombre de clase
+            color = self.colors[class_id % len(self.colors)]
+            class_name = (
+                self.classes[class_id]
+                if class_id < len(self.classes)
+                else f"class_{class_id}"
+            )
+
+            # Dibujar rectángulo
+            cv2.rectangle(img_display, (x1, y1), (x2, y2), color, thickness)
+
+            # Añadir texto con el nombre de la clase
+            if show_class_names:
+                # Calcular posición del texto
+                text_y = y1 - 10 if y1 - 10 > 10 else y1 + 25
+
+                # Dibujar fondo para el texto
+                (text_width, text_height), _ = cv2.getTextSize(
+                    class_name, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+                )
+                cv2.rectangle(
+                    img_display,
+                    (x1, text_y - text_height - 5),
+                    (x1 + text_width, text_y + 5),
+                    color,
+                    -1,
+                )
+
+                # Dibujar texto
+                cv2.putText(
+                    img_display,
+                    class_name,
+                    (x1, text_y),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (255, 255, 255),
+                    2,
+                )
+
+        if axis is not None:
+            axis.imshow(img_display)
+            axis.axis("off")
+        else:
+            plt.figure(figsize=(12, 8))
+            plt.imshow(img_display)
+            plt.axis("off")
+            plt.show()
+
+        return img_display
+
 
 # Ejemplo de uso
 if __name__ == "__main__":
@@ -144,12 +222,22 @@ if __name__ == "__main__":
     # Mostrar información básica
     print(f"Total de imágenes encontradas: {len(dm.image_files)}")
     
-    # Ejemplo de carga de una imagen (si existen imágenes)
+    # Ejemplo de carga y visualización de una imagen (si existen imágenes)
     if len(dm.image_files) > 0:
         img_path = dm.image_files[0]
         print(f"Cargando imagen de ejemplo: {img_path.name}")
         img = dm._load_image(img_path)
         print(f"Dimensiones de la imagen: {img.shape}")
+        
+        # Cargar etiquetas correspondientes
+        label_path = dm.labels_dir / f"{img_path.stem}.txt"
+        labels = dm._load_labels(label_path)
+        print(f"Etiquetas cargadas: {len(labels)}")
+        
+        # Visualizar imagen con cajas
+        if labels:
+            print("Mostrando imagen con cajas delimitadoras...")
+            dm.show_bbox(img, labels)
         
         # Cargar etiquetas correspondientes
         label_path = dm.labels_dir / f"{img_path.stem}.txt"
