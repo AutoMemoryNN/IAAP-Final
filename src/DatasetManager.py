@@ -2,8 +2,11 @@ import numpy as np
 import cv2
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
+import json
 import random
 from sklearn.model_selection import train_test_split
+from collections import defaultdict
+import matplotlib.pyplot as plt
 
 
 class DatasetManager:
@@ -159,3 +162,145 @@ class DatasetManager:
             print(f"  {split_name}: {len(images)} images")
 
         return splits
+
+    def process_and_save_dataset(
+        self,
+        target_size: Optional[Tuple[int, int]] = None,
+        random_seed: int = 42,
+        save_metadata: bool = True,
+    ) -> Dict[str, any]:
+        print("Starting dataset processing...")
+
+        splits = self.split_dataset(random_seed)
+
+        stats = {
+            "processed_samples": 0,
+            "failed_samples": 0,
+            "splits": {},
+            "class_distribution": defaultdict(int),
+            "target_size": target_size,
+        }
+
+        for split_name, image_paths in splits.items():
+            if len(image_paths) == 0:
+                continue
+
+            print(f"\nProcessing {split_name}...")
+            split_stats = self._process_split(image_paths, split_name, target_size)
+            stats["splits"][split_name] = split_stats
+            stats["processed_samples"] += split_stats["processed"]
+            stats["failed_samples"] += split_stats["failed"]
+
+            for class_name, count in split_stats["class_distribution"].items():
+                stats["class_distribution"][class_name] += count
+
+        if save_metadata:
+            self._save_metadata(stats)
+
+        print(
+            f"\nProcessing completed: {stats['processed_samples']} samples processed, {stats['failed_samples']} failed"
+        )
+
+        return stats
+
+    def _process_split(
+        self,
+        image_paths: List[Path],
+        split_name: str,
+        target_size: Optional[Tuple[int, int]],
+    ) -> Dict[str, any]:
+        processed = 0
+        failed = 0
+        class_distribution = defaultdict(int)
+
+        all_images = []
+        all_labels = []
+        sample_names = []
+
+        for i, image_path in enumerate(image_paths):
+            result = self._load_and_process_sample(image_path)
+
+            if result is None:
+                failed += 1
+                continue
+
+            img, labels = result
+
+            if target_size:
+                img = cv2.resize(img, target_size)
+
+            if len(labels) > 0:
+                for label in labels:
+                    class_id = int(label[0])
+                    if class_id < len(self.final_classes):
+                        class_name = self.final_classes[class_id]
+                        class_distribution[class_name] += 1
+
+            all_images.append(img)
+            all_labels.append(labels)
+            sample_names.append(image_path.stem)
+            processed += 1
+
+            if (i + 1) % 100 == 0:
+                print(f"  Processed {i + 1}/{len(image_paths)} samples...")
+
+        if processed > 0:
+            images_array = np.array(all_images)
+            labels_array = np.array(all_labels, dtype=object)
+            names_array = np.array(sample_names)
+
+            np.save(self.output_data_path / f"{split_name}_images.npy", images_array)
+            np.save(self.output_data_path / f"{split_name}_labels.npy", labels_array)
+            np.save(self.output_data_path / f"{split_name}_names.npy", names_array)
+
+        return {
+            "processed": processed,
+            "failed": failed,
+            "class_distribution": dict(class_distribution),
+            "shape": images_array.shape if processed > 0 else None,
+        }
+
+    def _save_metadata(self, stats: Dict[str, any]):
+        metadata = {
+            "original_classes": self.original_classes,
+            "final_classes": self.final_classes,
+            "class_mapping": self.class_mapping,
+            "split_ratios": {
+                "train": self.train_ratio,
+                "val": self.val_ratio,
+                "test": self.test_ratio,
+            },
+            "processing_stats": stats,
+        }
+
+        metadata_path = self.output_data_path / "metadata.json"
+        with open(metadata_path, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2, ensure_ascii=False, default=str)
+
+    def load_processed_split(
+        self, split: str
+    ) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+        images_path = self.output_data_path / f"{split}_images.npy"
+        labels_path = self.output_data_path / f"{split}_labels.npy"
+        names_path = self.output_data_path / f"{split}_names.npy"
+
+        if not all([images_path.exists(), labels_path.exists(), names_path.exists()]):
+            return None
+
+        try:
+            images = np.load(images_path)
+            labels = np.load(labels_path, allow_pickle=True)
+            names = np.load(names_path)
+            return images, labels, names
+        except Exception as e:
+            print(f"Error loading split {split}: {e}")
+            return None
+
+
+if __name__ == "__main__":
+    dm = DatasetManager()
+    stats = dm.process_and_save_dataset(target_size=(224, 224))
+
+    images, labels, names = dm.load_processed_split("train")
+    if images is not None:
+        print(f"Train set loaded: {images.shape}")
