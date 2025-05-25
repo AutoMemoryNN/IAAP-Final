@@ -2,6 +2,8 @@ import numpy as np
 import cv2
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
+import random
+from sklearn.model_selection import train_test_split
 
 
 class DatasetManager:
@@ -116,3 +118,44 @@ class DatasetManager:
         except Exception as e:
             print(f"Error processing {image_path}: {e}")
             return None
+
+    def split_dataset(self, random_seed: int = 42) -> Dict[str, List[Path]]:
+        image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif"}
+        all_images = []
+
+        images_dir = self.raw_data_path / "images"
+        for ext in image_extensions:
+            all_images.extend(list(images_dir.glob(f"*{ext}")))
+            all_images.extend(list(images_dir.glob(f"*{ext.upper()}")))
+
+        all_images = sorted(all_images)
+        if len(all_images) == 0:
+            raise ValueError("No images found in directory")
+
+        random.seed(random_seed)
+        np.random.seed(random_seed)
+
+        # First split: train vs (val + test)
+        train_images, temp_images = train_test_split(
+            all_images,
+            train_size=self.train_ratio,
+            random_state=random_seed,
+            shuffle=True,
+        )
+
+        # Second split: val vs test
+        if self.test_ratio > 0:
+            val_size = self.val_ratio / (self.val_ratio + self.test_ratio)
+            val_images, test_images = train_test_split(
+                temp_images, train_size=val_size, random_state=random_seed, shuffle=True
+            )
+        else:
+            val_images = temp_images
+            test_images = []
+
+        splits = {"train": train_images, "val": val_images, "test": test_images}
+
+        for split_name, images in splits.items():
+            print(f"  {split_name}: {len(images)} images")
+
+        return splits
