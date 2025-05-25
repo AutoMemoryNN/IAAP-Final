@@ -7,6 +7,7 @@ import random
 from sklearn.model_selection import train_test_split
 from collections import defaultdict
 import matplotlib.pyplot as plt
+import yaml
 
 
 class DatasetManager:
@@ -168,40 +169,58 @@ class DatasetManager:
         target_size: Optional[Tuple[int, int]] = None,
         random_seed: int = 42,
         save_metadata: bool = True,
-    ) -> Dict[str, any]:
-        print("Starting dataset processing...")
+    ) -> Dict[str, List[str]]:
+        splits = self.split_dataset(random_seed=random_seed)
+        saved_paths = defaultdict(list)
 
-        splits = self.split_dataset(random_seed)
+        for split, image_paths in splits.items():
+            image_dir = self.output_data_path / "images" / split
+            label_dir = self.output_data_path / "labels" / split
+            image_dir.mkdir(parents=True, exist_ok=True)
+            label_dir.mkdir(parents=True, exist_ok=True)
 
-        stats = {
-            "processed_samples": 0,
-            "failed_samples": 0,
-            "splits": {},
-            "class_distribution": defaultdict(int),
-            "target_size": target_size,
-        }
+            for image_path in image_paths:
+                result = self._load_and_process_sample(image_path)
+                if result is None:
+                    continue
 
-        for split_name, image_paths in splits.items():
-            if len(image_paths) == 0:
-                continue
+                img, labels = result
+                if target_size:
+                    img = cv2.resize(img, target_size)
 
-            print(f"\nProcessing {split_name}...")
-            split_stats = self._process_split(image_paths, split_name, target_size)
-            stats["splits"][split_name] = split_stats
-            stats["processed_samples"] += split_stats["processed"]
-            stats["failed_samples"] += split_stats["failed"]
+                # Save image
+                out_img_path = image_dir / image_path.name
+                cv2.imwrite(str(out_img_path), cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+                saved_paths[split].append(str(out_img_path))
 
-            for class_name, count in split_stats["class_distribution"].items():
-                stats["class_distribution"][class_name] += count
+                # Save label
+                out_label_path = label_dir / f"{image_path.stem}.txt"
+                with open(out_label_path, "w") as f:
+                    for label in labels:
+                        line = " ".join(map(str, label))
+                        f.write(f"{line}\n")
 
+        # Save YOLO-compatible YAML
         if save_metadata:
-            self._save_metadata(stats)
+            data_yaml = {
+                "train": str((self.output_data_path / "images/train").resolve()),
+                "val": str((self.output_data_path / "images/val").resolve()),
+                "test": str((self.output_data_path / "images/test").resolve()),
+                "nc": len(self.final_classes),
+                "names": self.final_classes,
+            }
+            with open(self.output_data_path / "data.yaml", "w") as f:
+                yaml.dump(data_yaml, f)
 
-        print(
-            f"\nProcessing completed: {stats['processed_samples']} samples processed, {stats['failed_samples']} failed"
-        )
+            metadata = {
+                "class_mapping": self.class_mapping,
+                "final_classes": self.final_classes,
+                "splits": dict(saved_paths),
+            }
+            with open(self.output_data_path / "metadata.json", "w") as f:
+                json.dump(metadata, f, indent=4)
 
-        return stats
+        return saved_paths
 
     def _process_split(
         self,
